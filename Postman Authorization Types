@@ -1,0 +1,568 @@
+Postman Authorization Types: Complete Technical Guide with Code
+Let's learn all 12 authorization types shown in your Postman screenshot using real API scenarios, HTTP requests, and code examples.
+
+I'll use examples like your .NET API, where you might call an endpoint to create a report schedule, retrieve employee details, or access an external service.
+First, understand how authorization works
+Suppose you have this API:
+POST https://api.example.com/report/api/scheduler/create-schedule
+
+
+Your client (Postman, Angular, or another application) sends an HTTP request to your .NET backend.
+
+The backend checks the credentials, validates the request, and decides whether to allow access.
+Client
+
+Postman / Angular / React
+
+HTTP Request
+
+Headers + body + credentials
+
+Authentication + authorization checks
+
+Who are you? What can you access?
+
+API response
+
+200 OK / 401 / 403 / 422
+
+
+One important distinction: Postman calls these options Authorization types, but technically they include authentication mechanisms, authorization frameworks, and request-signing schemes.
+1. No Auth
+Meaning: The request contains no authentication credentials.
+Technical example
+GET /api/public/products HTTP/1.1
+Host: api.example.com
+
+
+.NET 8 example
+[ApiController]
+[Route("api/public")]
+public class PublicController : ControllerBase
+{
+    [HttpGet("products")]
+    [AllowAnonymous]
+    public IActionResult GetProducts()
+    {
+        return Ok(new[]
+        {
+            new { Id = 1, Name = "Laptop" },
+            new { Id = 2, Name = "Keyboard" }
+        });
+    }
+}
+
+
+[AllowAnonymous] allows unauthenticated access to this endpoint, even when authentication is configured globally.
+
+When to use: Public product catalogs, public health checks, and public information endpoints.
+
+Postman: Select No Auth.
+
+2. API Key
+Meaning: The API provider issues a secret key, and your request sends that key to the server.
+Technical example
+GET /api/weather HTTP/1.1
+Host: api.example.com
+X-API-Key: your-secret-api-key
+
+
+The key might also be sent in a query parameter, depending on the API's requirements. A header is generally preferable.
+.NET 8 example
+[HttpGet("weather")]
+public IActionResult GetWeather(
+    [FromHeader(Name = "X-API-Key")] string? apiKey)
+{
+    if (apiKey !=
+        _configuration["ApiKeys:Weather"])
+    {
+        return Unauthorized();
+    }
+
+    return Ok(new
+    {
+        Temperature = 30,
+        City = "Mumbai"
+    });
+}
+
+
+Here _configuration is injected IConfiguration. The expected key should be stored in secure configuration, such as a secret store, not hardcoded in production.
+Postman setup
+- Authorization → API Key
+- Key: X-API-Key
+- Value: your issued API key
+- Add to: Header
+When to use: Server-to-server integrations or APIs that explicitly issue API keys. An API key alone usually does not identify an individual end user or provide fine-grained user permissions.
+
+3. Bearer Token
+Meaning: You send an access token with the request. The server checks whether that token is valid.
+
+A bearer token can be a JWT or another token format.
+Technical example
+POST /report/api/scheduler/create-schedule HTTP/1.1
+Host: api.example.com
+Authorization: Bearer eyJhbGciOi...
+Content-Type: application/json
+
+{
+  "reportName": "Record Register"
+}
+
+
+The important line is:
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+
+Angular example
+const token = 'your-access-token';
+
+this.http.post(
+  'https://api.example.com/report/api/scheduler/create-schedule',
+  { reportName: 'Record Register' },
+  {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  }
+).subscribe(response => {
+  console.log(response);
+});
+
+
+In a real Angular application, use an HTTP interceptor to attach tokens appropriately rather than repeating this code for every request.
+.NET 8 backend example
+Configure JWT bearer authentication in Program.cs:
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+
+                ValidateAudience = true,
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+
+                ValidateLifetime = true,
+
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(
+                        builder.Configuration["Jwt:Key"]!))
+            };
+    });
+
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+app.Run();
+
+
+An endpoint requiring a valid token:
+[Authorize]
+[HttpGet("my-reports")]
+public IActionResult GetMyReports()
+{
+    return Ok("Authenticated user can access reports");
+}
+
+
+This configuration is illustrative: use a strong secret stored securely, and ensure the token issuer, audience, and signing configuration match your actual token issuer.
+
+When to use: When your API expects an access token in the Authorization header.
+
+4. JWT Bearer
+Meaning: This is bearer authentication using a JSON Web Token (JWT).
+
+A JWT commonly contains three Base64URL-encoded parts separated by dots:
+header.payload.signature
+
+
+For example, its payload might contain:
+{
+  "sub": "101",
+  "role": "Admin",
+  "exp": 1793275200
+}
+
+
+This represents example claims, not a complete valid token. The exp value is an expiration timestamp.
+How the backend uses it
+1. Client sends the JWT.
+2. Backend validates the signature.
+3. Backend checks the expiration, issuer, and audience as configured.
+4. Backend reads claims such as user ID or role.
+5. Authorization policies determine whether the request is permitted.
+Example:
+[Authorize(Roles = "Admin")]
+[HttpDelete("reports/{id}")]
+public IActionResult DeleteReport(int id)
+{
+    return Ok($"Report {id} deleted");
+}
+
+
+A user needs a valid authenticated identity with the required Admin role to pass this role check.
+Bearer Token vs. JWT Bearer in Postman
+Bearer Token	JWT Bearer
+You normally paste an existing token.	Intended for JWT-specific configuration or token handling supported by Postman.
+Can carry JWTs or opaque tokens.	Intended for JWT-based authentication workflows.
+Does not automatically create a token.	Does not mean you can automatically use any JWT without the required setup.
+
+Key point: JWT is a token format. Bearer is the way the token is presented to the API. A JWT is commonly sent as a bearer token.
+
+5. Basic Auth
+Meaning: Send a username and password in the HTTP Authorization header.
+Technical example
+Suppose the username is reportuser and the password is mypassword.
+
+The client encodes:
+reportuser:mypassword
+
+
+using Base64 and sends:
+Authorization: Basic cmVwb3J0dXNlcjpteXBhc3N3b3Jk
+
+
+Base64 is encoding, not encryption. Always use HTTPS.
+Python example
+import requestsresponse = requests.get(    "https://api.example.com/reports",    auth=("reportuser", "mypassword"),    timeout=10)print(response.status_code)print(response.text)
+
+
+
+The HTTP library constructs the Basic Auth header for you.
+Postman setup
+- Authorization → Basic Auth
+- Username: reportuser
+- Password: your-password
+When to use: Legacy APIs or internal systems that specifically require Basic Auth. For new systems, token-based approaches are usually preferable.
+
+6. Digest Auth
+Meaning: The server challenges the client to authenticate. The client calculates a response based on the challenge and credentials rather than simply sending the password in the header.
+Simplified technical flow
+Client requests resource
+Server sends 401 with a Digest challenge
+
+Client calculates a challenge response
+Server validates the response
+
+An illustrative challenge header:
+WWW-Authenticate: Digest realm="Reports", nonce="abc123", qop="auth"
+
+
+The client then sends an Authorization: Digest ... header containing fields such as username, nonce, uri, and response.
+
+You should let Postman calculate the response instead of manually constructing the digest.
+Postman setup
+- Authorization → Digest Auth
+- Enter the username and password.
+- Send the request and let Postman handle the challenge-response exchange.
+When to use: Older services that explicitly require Digest Auth. Digest does not replace HTTPS and is not a preferred design for new APIs.
+
+7. OAuth 1.0
+Meaning: A protocol that authenticates requests using signatures, typically based on a consumer key, consumer secret, token, and token secret.
+Technical example
+An OAuth 1.0 request may contain:
+GET /api/orders HTTP/1.1
+Host: api.example.com
+Authorization: OAuth oauth_consumer_key="consumer-key",
+ oauth_token="access-token",
+ oauth_signature_method="HMAC-SHA1",
+ oauth_signature="calculated-signature",
+ oauth_timestamp="...",
+ oauth_nonce="...",
+ oauth_version="1.0"
+
+
+The values above are illustrative. The signature must be calculated according to the OAuth 1.0 signing rules.
+How it works
+1. The application obtains the required OAuth credentials and token.
+2. It creates a normalized representation of the HTTP request.
+3. It signs the request using the specified signature algorithm.
+4. The server verifies the signature and associated credentials.
+Postman setup
+Select OAuth 1.0, then enter the credentials and signature options required by the API provider.
+
+When to use: Only when the service explicitly documents OAuth 1.0, often in older integrations.
+
+8. OAuth 2.0
+Meaning: OAuth 2.0 lets an application obtain an access token to access resources within an authorized scope.
+
+For example, an application wants permission to read a user's Google Calendar. It redirects the user to the authorization provider, obtains permission, and receives an access token through the appropriate flow.
+Technical example: Authorization Code flow with PKCE
+
+1. User clicks Sign in / Connect
+
+The application starts the authorization flow.
+
+
+
+
+2. Browser opens the provider's page
+
+The user signs in and grants requested permission.
+
+
+
+
+3. Application exchanges the authorization code
+
+The token endpoint validates the exchange and returns an access token.
+
+
+
+
+4. Application calls the resource API
+
+It sends the access token in a Bearer header.
+
+
+
+Example token request
+For an authorization-code flow, a token exchange may look like this:
+POST /oauth/token HTTP/1.1
+Host: auth.example.com
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code&
+code=AUTHORIZATION_CODE&
+client_id=YOUR_CLIENT_ID&
+redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&
+code_verifier=YOUR_PKCE_CODE_VERIFIER
+
+
+The actual parameters depend on the provider and client type. A confidential server-side client may also need client authentication.
+
+An illustrative token response:
+{
+  "access_token": "ACCESS_TOKEN",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "calendar.read"
+}
+
+
+You then call the resource API:
+GET /api/calendar/events HTTP/1.1
+Host: api.example.com
+Authorization: Bearer ACCESS_TOKEN
+
+
+Postman setup
+Select OAuth 2.0, configure the authorization URL, token URL, client ID, scopes, and callback details as required by the provider, then use Postman's token flow.
+
+When to use: APIs that require delegated access or integrations where users grant permission to applications. For login and identity, OAuth 2.0 is commonly combined with OpenID Connect.
+
+9. Hawk Authentication
+Meaning: Hawk authenticates HTTP requests using a cryptographic message authentication code (MAC). The client and server share credentials used to calculate and verify the request's signature.
+Technical example
+A simplified Hawk header looks like this:
+GET /api/orders HTTP/1.1
+Host: api.example.com
+Authorization: Hawk id="123456",
+ ts="1475271670",
+ nonce="Ygvqdz",
+ mac="calculated-mac"
+
+
+The MAC is calculated using a shared secret and request details. The timestamp and nonce help protect against replay attacks when correctly validated.
+Conceptual code example
+id     = client identifier
+secret = shared secret
+
+normalizedRequest =
+    timestamp + nonce + method + path + host
+
+mac = HMAC(sharedSecret, normalizedRequest)
+
+send request with Hawk authorization header
+
+
+This is pseudocode, not a complete Hawk implementation. The actual scheme specifies the exact normalization and encoding rules.
+
+When to use: Only when the target API explicitly requires Hawk. For a new .NET API, JWT bearer authentication or another standard supported by your identity provider is usually more practical.
+
+10. AWS Signature
+Meaning: AWS Signature Version 4 (SigV4) signs the request using AWS credentials and a canonical representation of the request.
+
+Unlike a simple API key, the signature depends on request details such as the HTTP method, path, headers, payload hash, date, and target AWS service.
+Technical example
+An AWS request may look like this:
+GET /my-bucket/report.csv HTTP/1.1
+Host: s3.amazonaws.com
+X-Amz-Date: 20261029T070000Z
+Authorization: AWS4-HMAC-SHA256 Credential=ACCESS_KEY/..., SignedHeaders=host;x-amz-date, Signature=...
+
+
+This is illustrative; the actual canonical request and signature must be calculated correctly.
+How it works
+1. Configure the AWS access key and secret key.
+2. Build the canonical request.
+3. Calculate the request hash and signing key.
+4. Generate the signature.
+5. Send the request with the calculated authorization header.
+AWS SDK example in C#
+For AWS S3, the SDK normally handles request signing for you:
+using Amazon;
+using Amazon.S3;
+using Amazon.S3.Model;
+
+var s3 = new AmazonS3Client(
+    RegionEndpoint.APSouth1
+);
+
+var response = await s3.GetObjectAsync(
+    new GetObjectRequest
+    {
+        BucketName = "my-report-bucket",
+        Key = "report.csv"
+    }
+);
+
+Console.WriteLine(response.ContentLength);
+
+
+Configure credentials through a secure AWS credential provider, IAM role, or another supported mechanism rather than embedding secret keys in source code.
+
+When to use: AWS services and APIs that require AWS request signing.
+
+11. NTLM Authentication
+Meaning: NTLM is a Microsoft Windows authentication protocol used in certain enterprise environments.
+
+It uses a challenge-response exchange rather than sending the user's password directly as a normal HTTP password field.
+Technical example
+A server may challenge the client:
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: NTLM
+
+
+The client and server then perform the NTLM authentication handshake. The exact exchange involves multiple protocol messages, not a single static authorization header.
+C# example
+For an internal service that supports NTLM, .NET can use Windows credentials:
+using System.Net;
+
+var handler = new HttpClientHandler
+{
+    Credentials = new NetworkCredential(
+        "username",
+        "password",
+        "DOMAIN"
+    )
+};
+
+using var client = new HttpClient(handler);
+
+var response = await client.GetAsync(
+    "https://internal.example.com/api/reports"
+);
+
+response.EnsureSuccessStatusCode();
+
+var content = await response.Content.ReadAsStringAsync();
+
+Console.WriteLine(content);
+
+
+Use only the authentication mechanism supported by the server; Windows-integrated credentials may be preferable where supported. The example illustrates explicit credentials, not a recommendation to hardcode them.
+
+When to use: Legacy Windows services or internal enterprise APIs that specifically require NTLM.
+
+12. Akamai EdgeGrid
+Meaning: EdgeGrid is Akamai's authentication scheme for supported Akamai APIs. It uses request-signing credentials and a calculated signature.
+Technical example
+An illustrative header:
+GET /ccu/v3/invalidate/url HTTP/1.1
+Host: api.akamai.com
+Authorization: EG1-HMAC-SHA256 client_token=...;access_token=...;timestamp=...;nonce=...;signature=...
+
+
+The signature is calculated from the credentials and request details according to the EdgeGrid specification.
+How it works
+1. Create API credentials in Akamai Control Center.
+2. Configure the client token, access token, and client secret.
+3. Sign the request using the EdgeGrid rules.
+4. Send the signed request to the appropriate Akamai API.
+Use Akamai's supported SDK or signing library rather than manually creating the signature.
+
+When to use: Managing supported Akamai services through their APIs, such as cache invalidation or configuration management.
+
+13. Compare all 12 types at a glance
+Type	What the client sends or does	Typical use
+No Auth	No credentials	Public APIs
+API Key	API key	Provider-specific integrations
+Bearer Token	Access token	Protected REST APIs
+JWT Bearer	JWT used as a bearer token	JWT-protected APIs
+Basic Auth	Username + password encoded in Base64	Legacy APIs
+Digest Auth	Challenge-response digest	Older systems
+OAuth 1.0	Signed request + OAuth credentials	Legacy OAuth integrations
+OAuth 2.0	Obtains an access token through an OAuth flow	Delegated API access
+Hawk	MAC-signed request	Hawk-enabled APIs
+AWS Signature	AWS SigV4 request signature	AWS APIs
+NTLM	Windows challenge-response authentication	Enterprise Windows services
+Akamai EdgeGrid	Akamai-specific request signature	Akamai APIs
+
+14. Test your understanding
+1. Your .NET API expects `Authorization: Bearer eyJ...`. Which Postman type should you choose?
+
+API Key
+
+Bearer Token
+
+Basic Auth
+
+
+
+2. You want a user to grant your application permission to read their Google Calendar. Which flow is relevant?
+
+OAuth 2.0
+
+NTLM
+
+Digest Auth
+
+
+
+3. An API provider gives you a secret value and says to send it in the `X-API-Key` header. Which type should you use?
+
+No Auth
+
+API Key
+
+AWS Signature
+
+
+
+4. Your API returns HTTP 422 after receiving your request. Does that automatically mean your token is wrong?
+
+Yes, always
+
+No, inspect the response body and request validation
+
+Yes, every 4xx error means token failure
+
+
+Try again
+15. What I recommend for your actual .NET API
+For the API in your screenshot, start by confirming what authentication middleware your backend uses and whether it expects a JWT, opaque bearer token, or another credential. If it uses JWT bearer authentication, Postman’s Bearer Token option is normally enough when you already have the token.
+
+Remember these three separate checks:
+1. Authentication: Is the caller's identity or token valid?
+2. Authorization: Is the caller allowed to perform this operation?
+3. Request validation: Is the JSON body valid and complete?
+These checks help you distinguish 401 Unauthorized, 403 Forbidden, and 422 Unprocessable Entity when debugging APIs.
