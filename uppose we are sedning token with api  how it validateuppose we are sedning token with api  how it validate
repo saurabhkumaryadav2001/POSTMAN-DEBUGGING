@@ -1,0 +1,127 @@
+suppose in out netcore code we have this 
+
+
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters()
+    {
+        ValidateIssuerSigningKey = true,
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = false,
+
+        IssuerSigningKey = new SymmetricSecurityKey(
+            TextEncodings.Base64Url.Decode(
+                configuration["Authentication:clientSecret"]))
+    };
+});
+
+
+The most important part is IssuerSigningKey. Your server uses the secret configured in Authentication:clientSecret to verify the token's signature.
+1. Imagine this real example
+Your application has an employee API:
+GET /api/employees
+Authorization: Bearer eyJhbGciOi...
+
+
+When this request reaches your backend, ASP.NET Core's JWT Bearer handler performs the validation process automatically. You do not need to manually decode the token inside every controller.
+2. Step-by-step: how the server validates your token
+
+Step 1: Read the token
+
+The JWT Bearer middleware reads the token from the Authorization header.
+Authorization: Bearer eyJhbGciOi...
+
+
+
+
+
+
+Step 2: Read the token's contents
+
+The handler parses the JWT into its header, payload and signature. It can read claims such as the user ID and expiration time.
+
+Remember: reading the payload does not prove the token is genuine.
+
+
+
+
+Step 3: Verify the signature
+
+Your backend uses the configured secret key to verify the token's signature.
+
+If somebody changes the user ID or other signed claims, signature verification should fail.
+
+
+
+
+Step 4: Check the validation rules
+
+The handler applies your configured checks, such as signature, issuer, audience and lifetime validation.
+
+In your current code, issuer, audience and lifetime checks are disabled.
+
+
+
+
+Step 5: Allow or reject the request
+
+If authentication succeeds, [Authorize] and the applicable authorization policies determine whether the caller can access the endpoint.
+
+
+
+3. How does the secret key verify the token?
+Imagine that your token issuer generates a JWT using a secret key.
+- Token issuer: signs the token using the secret.
+- Your backend: uses the corresponding secret to verify the signature.
+- The secret itself is never sent in the API request.
+For example, conceptually:
+TOKEN ISSUER
+    |
+    | Creates token and signs it with secret key
+    v
+JWT TOKEN
+    |
+    | Sent with API request
+    v
+YOUR .NET CORE BACKEND
+    |
+    | Verifies signature using configured secret
+    |
+    +---- Signature valid ----> Authentication succeeds
+    |
+    +---- Signature invalid --> 401 Unauthorized
+
+
+The server does not need to contact the token issuer for every request when it can validate the signature locally.
+4. What happens if someone modifies the token?
+Suppose the original signed token contains:
+{
+  "userId": 101,
+  "role": "Employee"
+}
+
+
+An attacker changes it to:
+{
+  "userId": 101,
+  "role": "Admin"
+}
+
+
+The modified payload no longer matches the original signature. Your backend's signature validation should reject the token.
+
+Simply editing the JWT payload does not give someone a valid admin token.
+5. Important issue in your actual code
+Your configuration currently contains:
+ValidateLifetime = false;
+ValidateIssuer = false;
+ValidateAudience = false;
+
+
+This means:
+- Signature: checked.
+- Expiration: not enforced.
+- Issuer: not checked.
+- Audience: not checked.
+For production, we should normally enable lifetime, issuer and audience validation with the correct expected values. Otherwise, a correctly signed token could be accepted even when expired or intended for another API.
