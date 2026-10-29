@@ -1,0 +1,356 @@
+Authentication vs Authorization
+Imagine you work in a company.
+
+
+
+
+
+
+
+
+
+Authentication = Who are you?
+
+The security guard checks your ID card to confirm your identity.
+
+Example: You log in to your application using your email and password.
+
+
+
+
+
+
+
+
+
+
+
+
+Authorization = What are you allowed to do?
+
+The guard checks whether you have permission to enter the server room.
+
+Example: An admin can delete users, but a normal employee cannot.
+
+
+
+Remember: Authentication checks identity; authorization checks permissions.
+2. Types of authorization and access control
+These are the important approaches you'll encounter when building APIs.
+
+
+
+
+
+
+
+
+
+1. API Key
+
+A client sends a secret key to identify itself to an API.
+
+Example: A weather API gives you a key to request weather information.
+GET /api/weather
+X-API-Key: abc123
+
+
+Use when: Identifying applications or services. An API key alone does not prove a human user's identity.
+
+
+
+
+
+
+
+
+
+
+
+
+2. Bearer Token
+
+The client sends an access token with its API request. Whoever possesses the token can generally use it, subject to its validity and permissions.
+Authorization: Bearer eyJhbGciOi...
+
+
+Use when: Calling protected APIs. Bearer describes how the token is presented, not how it was obtained.
+
+
+
+
+
+
+
+
+
+
+
+
+3. JWT (JSON Web Token)
+
+A token format that can carry information such as user ID, role, and expiry time.
+
+Example: After logging in, your API issues a JWT. You send it with requests, and the API validates it.
+Authorization: Bearer <your-JWT>
+
+
+Use when: Protecting REST APIs in .NET, Java Spring Boot, Angular, and other applications.
+
+JWT is a token format, not a separate authorization rule.
+
+
+
+
+
+
+
+
+
+
+
+
+4. Role-Based Access Control (RBAC)
+
+Permissions depend on the user's role.
+
+Example:
+- Admin → create, update, delete users.
+- Manager → view team reports.
+- Employee → view their own profile.
+Use when: Your application has roles such as Admin, Manager, Employee.
+
+
+
+
+
+
+
+
+
+
+
+
+5. Permission-Based Authorization
+
+Access depends on a specific permission rather than just a broad role.
+
+Example:
+- User.Read
+- User.Create
+- User.Delete
+- Report.Export
+An employee might be allowed to export reports without being an admin.
+
+Use when: Different users need different combinations of permissions.
+
+
+
+
+
+
+
+
+
+
+
+
+6. Claims-Based Authorization
+
+Access is decided using claims: pieces of information about the authenticated user.
+
+Example: A token contains claims such as:
+{
+  "department": "IT",
+  "country": "India"
+}
+
+
+The API can allow access only to users whose department is IT.
+
+Use when: Authorization depends on user attributes or information in their identity.
+
+
+
+
+
+
+
+
+
+
+
+
+7. Resource-Based Authorization
+
+Access depends on the particular record or resource the user wants to access.
+
+Example: Employee A can view their own salary slip, but cannot view Employee B's salary slip.
+
+Use when: Protecting individual records, files, orders, salary slips, or other user-owned data.
+
+
+
+
+
+
+
+
+
+
+
+
+8. OAuth 2.0
+
+A framework for obtaining authorization to access protected resources using tokens.
+
+Example: Your application asks Google for permission to access your Google Calendar.
+
+Google asks you to sign in and approve access. Your application receives an access token if the authorization succeeds.
+
+Use when: An application needs delegated access to another service's APIs.
+
+OAuth 2.0 is primarily an authorization framework. For user sign-in, OpenID Connect (OIDC) is commonly used alongside it.
+
+
+
+
+
+
+
+
+
+
+
+
+9. OpenID Connect (OIDC)
+
+An identity layer built on top of OAuth 2.0 that helps an application verify who the user is.
+
+Example: You click Login with Google on a website.
+
+Google authenticates you, and the website receives an ID token containing identity information.
+
+Use when: Implementing Google sign-in, Microsoft sign-in, or sign-in through an identity provider.
+
+
+
+
+
+
+
+
+
+
+
+
+10. Basic Authentication
+
+The client sends a username and password encoded using Base64 in the HTTP Authorization header.
+Authorization: Basic <base64-credentials>
+
+
+Use when: Some simple or legacy integrations require it. Always use HTTPS, and generally prefer modern authentication methods for new systems.
+
+
+
+3. When should you use which one?
+Situation	Recommended approach
+Angular frontend calls a protected .NET API	Bearer access token, often a JWT
+Admin and employee have different access	Role-based authorization
+Users have specific actions they can perform	Permission-based authorization
+User can access only their own records	Resource-based authorization
+Login with Google	OpenID Connect
+Access Google Calendar with user permission	OAuth 2.0
+Server-to-server integration	OAuth 2.0 client credentials or API key, depending on the API
+Legacy API requires username and password	Basic authentication over HTTPS
+
+4. Let's understand with a real .NET Core API example
+Suppose you have an HRMS application with these endpoints:
+- GET /api/employees — view employees.
+- POST /api/employees — create an employee.
+- DELETE /api/employees/10 — delete an employee.
+You want only authenticated users to view employees, and only admins to delete them.
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+[Route("api/employees")]
+public class EmployeesController : ControllerBase
+{
+    // Any authenticated user can access this endpoint
+    [Authorize]
+    [HttpGet]
+    public IActionResult GetEmployees()
+    {
+        return Ok("Employee list");
+    }
+
+    // Only users with the Admin role can access this endpoint
+    [Authorize(Roles = "Admin")]
+    [HttpDelete("{id}")]
+    public IActionResult DeleteEmployee(int id)
+    {
+        return Ok($"Employee {id} deleted");
+    }
+}
+
+
+What happens when you call the API?
+1. Client sends request
+
+Angular / Postman sends the token
+
+2. Authentication middleware
+
+Is the token valid?
+
+3. Authorization checks
+
+Does the user have permission or the Admin role?
+
+Allowed
+
+API executes
+
+Denied
+
+Usually HTTP 401 or 403
+
+
+
+- 401 Unauthorized: The request is not properly authenticated, for example because the token is missing or invalid.
+- 403 Forbidden: The user is authenticated but does not have the required permission.
+One important detail: the [Authorize] attributes work only when authentication and authorization are configured correctly in the application.
+5. Test your understanding
+1. An admin can delete employees, but an employee cannot. Which approach?
+
+RBAC
+
+OAuth 2.0
+
+Basic Authentication
+
+
+
+2. You click Login with Google. What is commonly used for sign-in?
+
+API Key
+
+OpenID Connect
+
+Resource-based authorization
+
+
+
+3. A user can view their own salary slip but not someone else's. Which approach?
+
+Basic Authentication
+
+API Key
+
+Resource-based authorization
+
+
+Try again
+My recommendation for your development work: First learn JWT authentication, role-based authorization, permission-based authorization, and resource-based authorization in ASP.NET Core. Then learn OAuth 2.0 and OpenID Connect, because they are especially useful for integrations and social login.
